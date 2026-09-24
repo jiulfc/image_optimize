@@ -1,0 +1,207 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,user-scalable=no,initial-scale=1,maximum-scale=1,minimum-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Media</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #111;
+        color: #ccc;
+        font-family: -apple-system, "Segoe UI", sans-serif;
+        overflow: hidden;
+      }
+      #view {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #img,
+      #vid {
+        max-width: 100vw;
+        max-height: 100vh;
+        object-fit: contain;
+        display: none;
+        opacity: 0;
+        transition: opacity 0.25s ease;
+      }
+      #img.active,
+      #vid.active {
+        display: block;
+      }
+      #img.show,
+      #vid.show {
+        opacity: 1;
+      }
+      #prog {
+        position: fixed;
+        top: 10px;
+        right: 14px;
+        padding: 4px 10px;
+        font-size: 14px;
+        background: rgba(0, 0, 0, 0.6);
+        border-radius: 6px;
+      }
+      #empty {
+        display: none;
+        color: #666;
+        font-size: 18px;
+      }
+      #confirm {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.75);
+        display: none;
+        align-items: center;
+        justify-content: center;
+      }
+      #confirm .box {
+        background: #222;
+        border: 1px solid #444;
+        border-radius: 8px;
+        padding: 28px 40px;
+        text-align: center;
+        font-size: 16px;
+      }
+      #confirm .hint {
+        color: #888;
+        font-size: 13px;
+        margin-top: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="view">
+      <img id="img" alt="" /><video id="vid" controls></video>
+      <div id="empty">no media</div>
+    </div>
+    <div id="prog"></div>
+    <div id="confirm">
+      <div class="box">
+        Delete this media?
+        <div class="hint">Enter = confirm &nbsp; Esc = cancel</div>
+      </div>
+    </div>
+    <script>
+      const TOTAL = __TOTAL__;
+      const TYPE = "__TYPE__";
+      let TOKEN = sessionStorage.getItem("token");
+      if (!TOKEN) {
+        TOKEN = new URLSearchParams(location.search).get("token") || "";
+        if (TOKEN) sessionStorage.setItem("token", TOKEN);
+      }
+      let i = parseInt(new URLSearchParams(location.search).get("page")) || 0;
+      i = Math.max(0, Math.min(i, TOTAL - 1));
+      let confirmShown = false;
+      const media = document.getElementById(TYPE === "video" ? "vid" : "img");
+      const prog = document.getElementById("prog");
+      const empty = document.getElementById("empty");
+      const confirmBox = document.getElementById("confirm");
+
+      function render() {
+        if (TOTAL === 0) {
+          empty.style.display = "block";
+          media.style.display = "none";
+          prog.textContent = "";
+          return;
+        }
+        empty.style.display = "none";
+        prog.textContent = i + 1 + " / " + TOTAL;
+        history.replaceState(
+          null,
+          "",
+          "?page=" + i + "&type=" + TYPE + "&token=" + TOKEN,
+        );
+        media.classList.add("active");
+        media.classList.remove("show");
+        setTimeout(function () {
+          media.src =
+            "/img?i=" +
+            i +
+            "&type=" +
+            TYPE +
+            "&t=" +
+            Date.now() +
+            "&token=" +
+            TOKEN;
+        }, 250);
+      }
+      media.addEventListener(
+        TYPE === "video" ? "canplay" : "load",
+        function () {
+          media.classList.add("show");
+        },
+      );
+      media.addEventListener("error", function () {
+        ensureSession();
+      });
+
+      async function ensureSession() {
+        try {
+          const j = await (await fetch("/auth")).json();
+          if (!j.token) {
+            location.href = "/";
+            return false;
+          }
+          return true;
+        } catch (e) {
+          return true;
+        }
+      }
+
+      function confirmOn() {
+        confirmShown = true;
+        confirmBox.style.display = "flex";
+      }
+      function confirmOff() {
+        confirmShown = false;
+        confirmBox.style.display = "none";
+      }
+
+      document.addEventListener("keydown", function (e) {
+        if (confirmShown) {
+          if (e.key === "Enter") doDelete();
+          else if (e.key === "Escape") confirmOff();
+          return;
+        }
+        if (e.key === "ArrowRight" && i < TOTAL - 1) {
+          e.preventDefault();
+          i++;
+          render();
+        } else if (e.key === "ArrowLeft" && i > 0) {
+          e.preventDefault();
+          i--;
+          render();
+        } else if (e.key === "Delete") {
+          e.preventDefault();
+          confirmOn();
+        }
+      });
+
+      async function doDelete() {
+        confirmOff();
+        const r = await fetch(
+          "/del?i=" + i + "&type=" + TYPE + "&token=" + TOKEN,
+          { method: "POST" },
+        );
+        if (!r.ok) {
+          if (await ensureSession()) alert("delete failed");
+          return;
+        }
+        media.classList.remove("show");
+        setTimeout(function () {
+          TOTAL--;
+          if (i >= TOTAL) i = TOTAL - 1;
+          render();
+        }, 250);
+      }
+      render();
+    </script>
+  </body>
+</html>

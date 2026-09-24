@@ -1,0 +1,52 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,user-scalable=no,initial-scale=1,maximum-scale=1,minimum-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Waiting for access</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #111;
+        color: #ccc;
+        font-family: -apple-system, "Segoe UI", sans-serif;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #msg {
+        font-size: 16px;
+        padding: 0 24px;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="msg">Waiting for access approval on the phone...</div>
+    <script>
+      async function poll() {
+        let j;
+        try {
+          const r = await fetch("/auth");
+          j = await r.json();
+        } catch (e) {
+          setTimeout(poll, 1000);
+          return;
+        }
+        if (j.token) {
+          sessionStorage.setItem("token", j.token);
+          location.href = "/?token=" + j.token;
+        } else if (j.denied) {
+          document.getElementById("msg").textContent =
+            "Access denied on the phone. Restart the server on the phone to try again.";
+        } else {
+          setTimeout(poll, 1000);
+        }
+      }
+      poll();
+    </script>
+  </body>
+</html>
