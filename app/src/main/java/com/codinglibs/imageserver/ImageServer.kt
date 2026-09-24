@@ -28,7 +28,7 @@ class ImageServer(private val context: Context) {
         private const val SESSION_TIMEOUT_MS = 30 * 60 * 1000L
     }
 
-    data class ImageItem(val uri: Uri, val mime: String)
+    data class ImageItem(val uri: Uri, val mime: String, val added: Long)
 
     class PendingDelete(val uri: Uri, val sender: IntentSender) {
         val latch = CountDownLatch(1)
@@ -46,6 +46,7 @@ class ImageServer(private val context: Context) {
     @Volatile var onDeletePending: ((PendingDelete) -> Unit)? = null
     @Volatile private var pendingRef: PendingDelete? = null
     @Volatile var token: String? = null
+    @Volatile var readWrite = false
     @Volatile var onAuthRequested: (() -> Unit)? = null
     @Volatile private var authRequested = false
     @Volatile private var authDenied = false
@@ -82,14 +83,16 @@ class ImageServer(private val context: Context) {
         return "127.0.0.1"
     }
 
-    fun grantAccess(approved: Boolean) {
+    fun denyAccess() {
         authRequested = false
-        if (approved) {
-            token = UUID.randomUUID().toString().replace("-", "")
-            lastSeen = System.currentTimeMillis()
-        } else {
-            authDenied = true
-        }
+        authDenied = true
+    }
+
+    fun grantAccess(readWrite: Boolean) {
+        authRequested = false
+        this.readWrite = readWrite
+        token = UUID.randomUUID().toString().replace("-", "")
+        lastSeen = System.currentTimeMillis()
     }
 
     fun isAuthPending(): Boolean = authRequested && token == null
@@ -114,17 +117,19 @@ class ImageServer(private val context: Context) {
         val list = mutableListOf<ImageItem>()
         cr.query(
             MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.MIME_TYPE),
+            arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.MIME_TYPE, MediaStore.Images.Media.DATE_ADDED),
             selection, null,
             "${MediaStore.Images.Media.DATE_ADDED} DESC"
         )?.use { c ->
             val idCol = c.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
             val mimeCol = c.getColumnIndexOrThrow(MediaStore.Images.Media.MIME_TYPE)
+            val dateCol = c.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
             while (c.moveToNext()) {
                 val id = c.getLong(idCol)
                 list += ImageItem(
                     ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id),
-                    c.getString(mimeCol) ?: "image/jpeg"
+                    c.getString(mimeCol) ?: "image/jpeg",
+                    c.getLong(dateCol)
                 )
             }
         }
@@ -139,17 +144,19 @@ class ImageServer(private val context: Context) {
         val list = mutableListOf<ImageItem>()
         cr.query(
             MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-            arrayOf(MediaStore.Video.Media._ID, MediaStore.Video.Media.MIME_TYPE),
+            arrayOf(MediaStore.Video.Media._ID, MediaStore.Video.Media.MIME_TYPE, MediaStore.Video.Media.DATE_ADDED),
             selection, null,
             "${MediaStore.Video.Media.DATE_ADDED} DESC"
         )?.use { c ->
             val idCol = c.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
             val mimeCol = c.getColumnIndexOrThrow(MediaStore.Video.Media.MIME_TYPE)
+            val dateCol = c.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_ADDED)
             while (c.moveToNext()) {
                 val id = c.getLong(idCol)
                 list += ImageItem(
                     ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id),
-                    c.getString(mimeCol) ?: "video/mp4"
+                    c.getString(mimeCol) ?: "video/mp4",
+                    c.getLong(dateCol)
                 )
             }
         }
@@ -184,12 +191,20 @@ class ImageServer(private val context: Context) {
                 val path = parts[1].substringBefore('?')
                 val query = parts[1].substringAfter('?', "")
                 val out = s.getOutputStream()
+                val kind = when {
+                    path.startsWith("/image/") -> "image"
+                    path.startsWith("/video/") -> "video"
+                    else -> null
+                }
+                val sub = kind?.let { path.substringAfter("/$it/") }
                 when {
                     path == "/auth" -> handleAuth(out)
-                    path == "/" && validToken(query) -> out.respond(200, "text/html; charset=utf-8", html(param(query, "type") ?: "image"))
-                    path == "/" -> servePending(out)
-                    path == "/img" && validToken(query) -> serveMedia(out, query, rangeHeader)
-                    path == "/del" && method == "POST" && validToken(query) -> doDelete(out, query)
+                    path == "/" -> out.redirect("/image/one" + if (query.isEmpty()) "" else "?$query")
+                    sub == "one" && validToken(query) ->
+                        out.respond(200, "text/html; charset=utf-8", html(kind!!))
+                    sub == "one" -> servePending(out, path)
+                    sub == "media" && validToken(query) -> serveMedia(out, query, rangeHeader, kind!!)
+                    sub == "del" && method == "POST" && validToken(query) -> doDelete(out, query, kind!!)
                     else -> out.respond(403, "text/plain", "forbidden")
                 }
             }
@@ -199,8 +214,7 @@ class ImageServer(private val context: Context) {
         }
     }
 
-    private fun serveMedia(out: OutputStream, query: String, rangeHeader: String?) {
-        val type = param(query, "type") ?: "image"
+    private fun serveMedia(out: OutputStream, query: String, rangeHeader: String?, type: String) {
         val i = indexOf(query) ?: return out.respond(400, "text/plain", "bad index")
         val list = listFor(type)
         val item = synchronized(list) { list.getOrNull(i) } ?: return out.respond(404, "text/plain", "no media")
@@ -264,8 +278,8 @@ class ImageServer(private val context: Context) {
         }
     }
 
-    private fun doDelete(out: OutputStream, query: String) {
-        val type = param(query, "type") ?: "image"
+    private fun doDelete(out: OutputStream, query: String, type: String) {
+        if (!readWrite) return out.respond(403, "text/plain", "read-only mode")
         val i = indexOf(query) ?: return out.respond(400, "text/plain", "bad index")
         val list = listFor(type)
         val item = synchronized(list) { list.getOrNull(i) } ?: return out.respond(404, "text/plain", "no media")
@@ -320,9 +334,16 @@ class ImageServer(private val context: Context) {
         out.respond(200, "application/json", "{\"pending\":true}")
     }
 
-    private fun servePending(out: OutputStream) {
+    private fun servePending(out: OutputStream, path: String) {
         val body = try { readAsset("pending.html") } catch (e: Exception) { "waiting for approval" }
-        out.respond(200, "text/html; charset=utf-8", body)
+        out.respond(200, "text/html; charset=utf-8", body.replace("__PATH__", path))
+    }
+
+    private fun OutputStream.redirect(location: String) {
+        write(
+            ("HTTP/1.1 302 Found\r\nLocation: $location\r\n" +
+                "Content-Length: 0\r\nConnection: close\r\n\r\n").toByteArray()
+        )
     }
 
     private fun readAsset(name: String): String =
@@ -338,6 +359,7 @@ class ImageServer(private val context: Context) {
         val reason = when (code) {
             200 -> "OK"
             400 -> "Bad Request"
+            403 -> "Forbidden"
             404 -> "Not Found"
             500 -> "Internal Server Error"
             else -> "Error"
@@ -350,8 +372,13 @@ class ImageServer(private val context: Context) {
     }
 
     private fun html(type: String): String {
-        val total = synchronized(listFor(type)) { listFor(type).size }
+        val list = listFor(type)
+        val total = synchronized(list) { list.size }
+        val dates = synchronized(list) { list.joinToString(",") { it.added.toString() } }
         val template = readAsset("index.html")
-        return template.replace("__TOTAL__", total.toString()).replace("__TYPE__", type)
+        return template.replace("__TOTAL__", total.toString())
+            .replace("__TYPE__", type)
+            .replace("__RW__", readWrite.toString())
+            .replace("__DATES__", "[$dates]")
     }
 }

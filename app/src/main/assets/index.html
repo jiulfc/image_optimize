@@ -2,7 +2,10 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,user-scalable=no,initial-scale=1,maximum-scale=1,minimum-scale=1">
+    <meta
+      name="viewport"
+      content="width=device-width,user-scalable=no,initial-scale=1,maximum-scale=1,minimum-scale=1"
+    />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Media</title>
     <style>
@@ -48,6 +51,15 @@
         background: rgba(0, 0, 0, 0.6);
         border-radius: 6px;
       }
+      #date {
+        position: fixed;
+        top: 40px;
+        right: 14px;
+        padding: 4px 10px;
+        font-size: 14px;
+        background: rgba(0, 0, 0, 0.6);
+        border-radius: 6px;
+      }
       #empty {
         display: none;
         color: #666;
@@ -74,6 +86,24 @@
         font-size: 13px;
         margin-top: 10px;
       }
+      #confirm .btns {
+        display: flex;
+        gap: 12px;
+        justify-content: center;
+        margin-top: 16px;
+      }
+      #confirm button {
+        padding: 8px 18px;
+        font-size: 14px;
+        border: 1px solid #555;
+        border-radius: 6px;
+        background: #333;
+        color: #ddd;
+        cursor: pointer;
+      }
+      #confirm button:hover {
+        background: #444;
+      }
     </style>
   </head>
   <body>
@@ -82,15 +112,21 @@
       <div id="empty">no media</div>
     </div>
     <div id="prog"></div>
+    <div id="date"></div>
     <div id="confirm">
       <div class="box">
         Delete this media?
-        <div class="hint">Enter = confirm &nbsp; Esc = cancel</div>
+        <div class="btns">
+          <button id="btnNo">Cancel (Esc)</button>
+          <button id="btnYes">Confirm (Enter)</button>
+        </div>
       </div>
     </div>
     <script>
-      const TOTAL = __TOTAL__;
+      let TOTAL = __TOTAL__;
       const TYPE = "__TYPE__";
+      const RW = __RW__;
+      let DATES = __DATES__;
       let TOKEN = sessionStorage.getItem("token");
       if (!TOKEN) {
         TOKEN = new URLSearchParams(location.search).get("token") || "";
@@ -101,6 +137,7 @@
       let confirmShown = false;
       const media = document.getElementById(TYPE === "video" ? "vid" : "img");
       const prog = document.getElementById("prog");
+      const date = document.getElementById("date");
       const empty = document.getElementById("empty");
       const confirmBox = document.getElementById("confirm");
 
@@ -109,23 +146,23 @@
           empty.style.display = "block";
           media.style.display = "none";
           prog.textContent = "";
+          date.textContent = "";
           return;
         }
         empty.style.display = "none";
         prog.textContent = i + 1 + " / " + TOTAL;
-        history.replaceState(
-          null,
-          "",
-          "?page=" + i + "&type=" + TYPE + "&token=" + TOKEN,
-        );
+        date.textContent = DATES[i]
+          ? new Date(DATES[i] * 1000).toLocaleString()
+          : "";
+        history.replaceState(null, "", "?page=" + i + "&token=" + TOKEN);
         media.classList.add("active");
         media.classList.remove("show");
         setTimeout(function () {
           media.src =
-            "/img?i=" +
-            i +
-            "&type=" +
+            "/" +
             TYPE +
+            "/media?i=" +
+            i +
             "&t=" +
             Date.now() +
             "&token=" +
@@ -146,7 +183,7 @@
         try {
           const j = await (await fetch("/auth")).json();
           if (!j.token) {
-            location.href = "/";
+            location.href = "/" + TYPE + "/one";
             return false;
           }
           return true;
@@ -164,6 +201,9 @@
         confirmBox.style.display = "none";
       }
 
+      document.getElementById("btnYes").addEventListener("click", doDelete);
+      document.getElementById("btnNo").addEventListener("click", confirmOff);
+
       document.addEventListener("keydown", function (e) {
         if (confirmShown) {
           if (e.key === "Enter") doDelete();
@@ -178,24 +218,29 @@
           e.preventDefault();
           i--;
           render();
-        } else if (e.key === "Delete") {
+        } else if (e.key === "Delete" || e.key === "Backspace") {
           e.preventDefault();
+          if (!RW) {
+            alert("read-only mode");
+            return;
+          }
           confirmOn();
         }
       });
 
       async function doDelete() {
         confirmOff();
-        const r = await fetch(
-          "/del?i=" + i + "&type=" + TYPE + "&token=" + TOKEN,
-          { method: "POST" },
-        );
+        const r = await fetch("/" + TYPE + "/del?i=" + i + "&token=" + TOKEN, {
+          method: "POST",
+        });
         if (!r.ok) {
-          if (await ensureSession()) alert("delete failed");
+          const msg = (await r.text()).trim();
+          if (await ensureSession()) alert(msg || "delete failed");
           return;
         }
         media.classList.remove("show");
         setTimeout(function () {
+          DATES.splice(i, 1);
           TOTAL--;
           if (i >= TOTAL) i = TOTAL - 1;
           render();

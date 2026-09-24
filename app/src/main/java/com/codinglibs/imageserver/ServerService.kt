@@ -8,8 +8,10 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 
 class ServerService : Service() {
 
@@ -18,6 +20,9 @@ class ServerService : Service() {
         const val NOTIF_ID = 1
         @Volatile var server: ImageServer? = null
     }
+
+    private var wakeLock: PowerManager.WakeLock? = null
+    private var wifiLock: WifiManager.WifiLock? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -30,6 +35,10 @@ class ServerService : Service() {
         } else {
             startForeground(NOTIF_ID, notification())
         }
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ImageServer:serve").apply { acquire() }
+        val wm = getSystemService(Context.WIFI_SERVICE) as WifiManager
+        wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "ImageServer:wifi").apply { acquire() }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -48,6 +57,8 @@ class ServerService : Service() {
     override fun onDestroy() {
         server?.stop()
         server = null
+        wakeLock?.release()
+        wifiLock?.release()
         super.onDestroy()
     }
 

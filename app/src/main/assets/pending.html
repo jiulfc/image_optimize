@@ -38,7 +38,7 @@
         }
         if (j.token) {
           sessionStorage.setItem("token", j.token);
-          location.href = "/?token=" + j.token;
+          location.href = "__PATH__?token=" + j.token;
         } else if (j.denied) {
           document.getElementById("msg").textContent =
             "Access denied on the phone. Restart the server on the phone to try again.";
