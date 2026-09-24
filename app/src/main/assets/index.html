@@ -77,7 +77,7 @@
         background: #222;
         border: 1px solid #444;
         border-radius: 8px;
-        padding: 28px 40px;
+        padding: 10px 40px 20px 40px;
         text-align: center;
         font-size: 16px;
       }
@@ -108,14 +108,14 @@
   </head>
   <body>
     <div id="view">
-      <img id="img" alt="" /><video id="vid" controls></video>
+      <img id="img" alt="" /><video id="vid" controls autoplay></video>
       <div id="empty">no media</div>
     </div>
     <div id="prog"></div>
     <div id="date"></div>
     <div id="confirm">
       <div class="box">
-        Delete this media?
+        <h3>Delete this media?</h3>
         <div class="btns">
           <button id="btnNo">Cancel (Esc)</button>
           <button id="btnYes">Confirm (Enter)</button>
