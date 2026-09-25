@@ -74,11 +74,19 @@ class ImageServer(private val context: Context) {
     }
 
     fun localIp(): String {
-        NetworkInterface.getNetworkInterfaces()?.toList()?.forEach { ni ->
-            if (!ni.isUp || ni.isLoopback) return@forEach
+        val ifaces = NetworkInterface.getNetworkInterfaces()?.toList() ?: return "127.0.0.1"
+        fun ipv4(ni: NetworkInterface): String? =
             ni.inetAddresses.toList().filterIsInstance<Inet4Address>()
-                .firstOrNull { !it.isLoopbackAddress }
-                ?.let { return it.hostAddress ?: "" }
+                .firstOrNull { !it.isLoopbackAddress }?.hostAddress
+        // hotspot: clients connect through the AP interface, prefer it over wlan0/cellular
+        for (name in listOf("ap0", "swlan0", "wlan1")) {
+            ifaces.firstOrNull { it.name == name && it.isUp }?.let { ni ->
+                ipv4(ni)?.let { return it }
+            }
+        }
+        ifaces.forEach { ni ->
+            if (!ni.isUp || ni.isLoopback || ni.name.startsWith("rmnet")) return@forEach
+            ipv4(ni)?.let { return it }
         }
         return "127.0.0.1"
     }

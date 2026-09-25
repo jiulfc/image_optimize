@@ -42,19 +42,35 @@
       #vid.show {
         opacity: 1;
       }
-      #prog {
+      #topbar {
         position: fixed;
         top: 10px;
         right: 14px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 8px;
+      }
+      #switch button {
+        background: transparent;
+        border: 1px solid #555;
+        border-radius: 6px;
+        color: #aaa;
+        padding: 4px 14px;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      #switch button.active {
+        border-color: #bbb;
+        color: #fff;
+      }
+      #prog {
         padding: 4px 10px;
         font-size: 14px;
         background: rgba(0, 0, 0, 0.6);
         border-radius: 6px;
       }
       #date {
-        position: fixed;
-        top: 40px;
-        right: 14px;
         padding: 4px 10px;
         font-size: 14px;
         background: rgba(0, 0, 0, 0.6);
@@ -111,8 +127,14 @@
       <img id="img" alt="" /><video id="vid" controls autoplay></video>
       <div id="empty">no media</div>
     </div>
-    <div id="prog"></div>
-    <div id="date"></div>
+    <div id="topbar">
+      <div id="switch">
+        <button id="btnImg">Photos</button>
+        <button id="btnVid">Videos</button>
+      </div>
+      <div id="prog"></div>
+      <div id="date"></div>
+    </div>
     <div id="confirm">
       <div class="box">
         <h3>Delete this media?</h3>
@@ -140,6 +162,21 @@
       const date = document.getElementById("date");
       const empty = document.getElementById("empty");
       const confirmBox = document.getElementById("confirm");
+
+      document.title = TYPE === "video" ? "Videos" : "Photos";
+      document
+        .getElementById(TYPE === "video" ? "btnVid" : "btnImg")
+        .classList.add("active");
+      function go(type) {
+        if (type === TYPE) return;
+        location.href = "/" + type + "/one?page=" + i + "&token=" + TOKEN;
+      }
+      document.getElementById("btnImg").addEventListener("click", function () {
+        go("image");
+      });
+      document.getElementById("btnVid").addEventListener("click", function () {
+        go("video");
+      });
 
       function render() {
         if (TOTAL === 0) {
