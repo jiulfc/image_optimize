@@ -11,11 +11,11 @@
     <style>
       html,
       body {
+        font-family: monospace;
         margin: 0;
         height: 100%;
         background: #111;
         color: #ccc;
-        font-family: -apple-system, "Segoe UI", sans-serif;
         overflow: hidden;
       }
       #view {
@@ -53,15 +53,16 @@
       }
       #switch button {
         background: transparent;
-        border: 1px solid #555;
+        border: none;
         border-radius: 6px;
         color: #aaa;
         padding: 4px 14px;
         font-size: 13px;
         cursor: pointer;
+        font-family: monospace;
       }
       #switch button.active {
-        border-color: #bbb;
+        background: rgba(0, 0, 0, 0.6);
         color: #fff;
       }
       #prog {
